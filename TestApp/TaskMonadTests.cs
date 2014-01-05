@@ -287,9 +287,7 @@ namespace TestApp
 
             Assert.IsNotNull(result);
             Assert.AreEqual(TaskStatus.Faulted, result.Status);
-            Assert.IsNotNull(result.Exception);
-            Assert.AreEqual(1, result.Exception.InnerExceptions.Count);
-            Assert.AreSame(ex, result.Exception.InnerException);
+            Assert.AreSame(ex, result.Exception.GetBaseException());
         }
 
         [TestMethod]
