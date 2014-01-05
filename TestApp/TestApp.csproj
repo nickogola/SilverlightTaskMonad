@@ -82,6 +82,7 @@
     </Compile>
     <Compile Include="Helpers\FrozenTaskScheduler.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TaskBaseTests.cs" />
     <Compile Include="TaskMonadTests.cs" />
   </ItemGroup>
   <ItemGroup>
