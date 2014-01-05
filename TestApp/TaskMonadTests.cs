@@ -356,6 +356,24 @@ namespace TestApp
         }
 
         [TestMethod]
+        public void Bind_ProducesFaultedTaskOfCompletedSourceIfBoundReturnsNull()
+        {
+            var tcs = new TaskCompletionSource<TestValue>();
+
+            var source = tcs.Task;
+
+            var result = source.Bind(x => default(Task<TestValue>));
+
+            var testValue = new TestValue();
+
+            tcs.SetResult(testValue);
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(TaskStatus.Faulted, result.Status);
+            Assert.IsInstanceOfType(result.Exception.GetBaseException(), typeof(InvalidOperationException));
+        }
+
+        [TestMethod]
         public void Bind_ProducesCompletedTaskOfCompletedSourceIfBoundCompletes()
         {
             var tcs = new TaskCompletionSource<TestValue>();
