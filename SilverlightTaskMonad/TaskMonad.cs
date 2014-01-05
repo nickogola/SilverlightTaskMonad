@@ -71,10 +71,11 @@ namespace TaskMonad
                 throw new ArgumentNullException("ex");
             }
 
-            if (ex is OperationCanceledException)
-            {
-                return CreateCancelled<T>();
-            }
+            // todo: revert this when CancellationToken support is added
+            //if (ex is OperationCanceledException)
+            //{
+            //    return CreateCancelled<T>();
+            //}
 
             var aggrEx = ex as AggregateException;
             if (aggrEx != null)
@@ -193,10 +194,11 @@ namespace TaskMonad
             {
                 tryBlockAsync = tryBlock();
             }
-            catch (OperationCanceledException)
-            {
-                return CreateCancelled<T>();
-            }
+            // todo: revert this when CancellationToken support is added
+            //catch (OperationCanceledException)
+            //{
+            //    return CreateCancelled<T>();
+            //}
             catch (Exception ex)
             {
                 return HandleException(cachedCatchBlocks, finallyBlock, ex);
@@ -244,10 +246,11 @@ namespace TaskMonad
             {
                 handleResultAsync = catchBlockToExecute.Handle(FromException<T>(ex), ex);
             }
-            catch (OperationCanceledException)
-            {
-                return CreateCancelled<T>();
-            }
+            // todo: revert this when CancellationToken support is added
+            //catch (OperationCanceledException)
+            //{
+            //    return CreateCancelled<T>();
+            //}
             catch (Exception handleEx)
             {
                 var finallySuccessResult = FromException<T>(handleEx);
@@ -283,10 +286,11 @@ namespace TaskMonad
             {
                 finallyBlockAsync = finallyBlock();
             }
-            catch (OperationCanceledException)
-            {
-                return CreateCancelled<T>();
-            }
+            // todo: revert this when CancellationToken support is added
+            //catch (OperationCanceledException)
+            //{
+            //    return CreateCancelled<T>();
+            //}
             catch (Exception finallyEx)
             {
                 return FromException<T>(finallyEx);
