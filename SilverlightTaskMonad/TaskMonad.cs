@@ -2,22 +2,16 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Documents;
-using System.Windows.Ink;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Shapes;
 
 namespace TaskMonad
 {
     public static class TaskMonad
     {
+        private static readonly Task _CompletedCached = new VoidResult().AsTask();
+
+        private static readonly Task _CancelledCached = CreateCancelled<VoidResult>();
+
         public static Task<T> Unit<T>(this T value)
         {
             return value.AsTask();
@@ -35,30 +29,30 @@ namespace TaskMonad
             }
 
             return source.ContinueWith(t =>
+            {
+                switch (t.Status)
                 {
-                    switch (t.Status)
-                    {
-                        case TaskStatus.Created:
-                        case TaskStatus.Running:
-                        case TaskStatus.WaitingForActivation:
-                        case TaskStatus.WaitingForChildrenToComplete:
-                        case TaskStatus.WaitingToRun:
-                            throw new InvalidOperationException(string.Format("Unexpected task status '{0}'", t.Status));
-                        case TaskStatus.Canceled:
-                            return CreateCancelled<TResult>();
-                        case TaskStatus.Faulted:
-                            return FromException<TResult>(t.Exception);
-                        case TaskStatus.RanToCompletion:
-                            var resultTask = func(t.Result);
-                            if (resultTask == null)
-                            {
-                                throw new InvalidOperationException("The bound func has returned a null task");
-                            }
-                            return resultTask;
-                        default:
-                            throw new ArgumentOutOfRangeException("t.Status", "Unexpected task status");
-                    }
-                },
+                    case TaskStatus.Created:
+                    case TaskStatus.Running:
+                    case TaskStatus.WaitingForActivation:
+                    case TaskStatus.WaitingForChildrenToComplete:
+                    case TaskStatus.WaitingToRun:
+                        throw new InvalidOperationException(string.Format("Unexpected task status '{0}'", t.Status));
+                    case TaskStatus.Canceled:
+                        return CreateCancelled<TResult>();
+                    case TaskStatus.Faulted:
+                        return FromException<TResult>(t.Exception);
+                    case TaskStatus.RanToCompletion:
+                        var resultTask = func(t.Result);
+                        if (resultTask == null)
+                        {
+                            throw new InvalidOperationException("The bound func has returned a null task");
+                        }
+                        return resultTask;
+                    default:
+                        throw new ArgumentOutOfRangeException("t.Status", "Unexpected task status");
+                }
+            },
                 TaskContinuationOptions.ExecuteSynchronously)
                 .Unwrap();
         }
@@ -172,18 +166,19 @@ namespace TaskMonad
 
             return resourceFactory()
                 .Then(resource =>
-                    Try<T>(() => resourceUsage(resource),
-                    null,
-                    () =>
-                    {
-                        if (resource != null)
-                            resource.Dispose();
-                        return _CompletedCached;
-                    })
-                    );
+                    Try(() => resourceUsage(resource),
+                        null,
+                        () =>
+                        {
+                            if (resource != null)
+                                resource.Dispose();
+                            return _CompletedCached;
+                        })
+                );
         }
 
-        public static Task<T> Try<T>(Func<Task<T>> tryBlock, IEnumerable<ICatchBlock<T>> catchBlocks, Func<Task> finallyBlock)
+        public static Task<T> Try<T>(Func<Task<T>> tryBlock, IEnumerable<ICatchBlock<T>> catchBlocks,
+            Func<Task> finallyBlock)
         {
             if (tryBlock == null)
                 throw new ArgumentNullException("tryBlock");
@@ -204,7 +199,7 @@ namespace TaskMonad
             }
             catch (Exception ex)
             {
-                return HandleException<T>(cachedCatchBlocks, finallyBlock, ex);
+                return HandleException(cachedCatchBlocks, finallyBlock, ex);
             }
 
             if (tryBlockAsync == null)
@@ -221,17 +216,18 @@ namespace TaskMonad
 
                 if (!t.IsFaulted)
                 {
-                    return ExecuteFinallyBlock<T>(finallyBlock, t);
+                    return ExecuteFinallyBlock(finallyBlock, t);
                 }
 
                 var exceptionToHandle = t.Exception.GetBaseException();
-                return HandleException<T>(cachedCatchBlocks, finallyBlock, exceptionToHandle);
+                return HandleException(cachedCatchBlocks, finallyBlock, exceptionToHandle);
             },
-            TaskContinuationOptions.ExecuteSynchronously)
-            .Unwrap();
+                TaskContinuationOptions.ExecuteSynchronously)
+                .Unwrap();
         }
 
-        private static Task<T> HandleException<T>(IEnumerable<ICatchBlock<T>> catchBlocks, Func<Task> finallyBlock, Exception ex)
+        private static Task<T> HandleException<T>(IEnumerable<ICatchBlock<T>> catchBlocks, Func<Task> finallyBlock,
+            Exception ex)
         {
             Debug.Assert(finallyBlock != null, "finallyBlock != null");
             Debug.Assert(catchBlocks != null, "catchBlocks != null");
@@ -241,7 +237,7 @@ namespace TaskMonad
                 .Where(x => !x.IsSpecificExceptionHandler || x.HandledExceptionType.IsInstanceOfType(ex));
             var catchBlockToExecute = matchedCatchBlocks.FirstOrDefault();
             if (catchBlockToExecute == null)
-                return ExecuteFinallyBlock<T>(finallyBlock, FromException<T>(ex));
+                return ExecuteFinallyBlock(finallyBlock, FromException<T>(ex));
 
             Task<T> handleResultAsync;
             try
@@ -255,7 +251,7 @@ namespace TaskMonad
             catch (Exception handleEx)
             {
                 var finallySuccessResult = FromException<T>(handleEx);
-                return ExecuteFinallyBlock<T>(finallyBlock, finallySuccessResult);
+                return ExecuteFinallyBlock(finallyBlock, finallySuccessResult);
             }
 
             if (handleResultAsync == null)
@@ -271,10 +267,10 @@ namespace TaskMonad
                         return CreateCancelled<T>();
                     }
 
-                    return ExecuteFinallyBlock<T>(finallyBlock, handleTask);
+                    return ExecuteFinallyBlock(finallyBlock, handleTask);
                 },
                     TaskContinuationOptions.ExecuteSynchronously)
-                    .Unwrap();
+                .Unwrap();
         }
 
         private static Task<T> ExecuteFinallyBlock<T>(Func<Task> finallyBlock, Task<T> finallySuccessResult)
@@ -316,21 +312,15 @@ namespace TaskMonad
 
                     return finallySuccessResult;
                 },
-                TaskContinuationOptions.ExecuteSynchronously)
-                        .Unwrap();
+                    TaskContinuationOptions.ExecuteSynchronously)
+                .Unwrap();
         }
-
-        private static readonly Task _CompletedCached = new VoidResult().AsTask();
-
-        private static readonly Task _CancelledCached = CreateCancelled<VoidResult>();
-
-        private struct VoidResult { }
 
         public class CatchInfo<TResult, TException>
             where TException : Exception
         {
-            private Task<TResult> _failedTask;
-            private TException _exception;
+            private readonly TException _exception;
+            private readonly Task<TResult> _failedTask;
 
             public CatchInfo(Task<TResult> failedTask, TException exception)
             {
@@ -349,10 +339,7 @@ namespace TaskMonad
 
             public TException Exception
             {
-                get
-                {
-                    return _exception;
-                }
+                get { return _exception; }
             }
 
             public CatchResult Handled(TResult newValue)
@@ -393,8 +380,8 @@ namespace TaskMonad
 
         public class CatchInfo<TResult>
         {
-            private Task<TResult> _failedTask;
-            private Exception _exception;
+            private readonly Exception _exception;
+            private readonly Task<TResult> _failedTask;
 
             public CatchInfo(Task<TResult> failedTask, Exception exception)
             {
@@ -411,7 +398,10 @@ namespace TaskMonad
                 _exception = exception;
             }
 
-            public Exception Exception { get { return this._exception; } }
+            public Exception Exception
+            {
+                get { return _exception; }
+            }
 
             public CatchResult Handled(TResult newValue)
             {
@@ -456,6 +446,10 @@ namespace TaskMonad
             bool IsSpecificExceptionHandler { get; }
 
             Task<T> Handle(Task<T> faultedTask, Exception exception);
+        }
+
+        private struct VoidResult
+        {
         }
     }
 }
