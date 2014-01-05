@@ -318,17 +318,137 @@ namespace TestApp
         public void Bind_ProducesCancelledTaskOfCancelledSource()
         {
             var tcs = new TaskCompletionSource<TestValue>();
-            tcs.SetCanceled();
 
             var source = tcs.Task;
 
             var result = source.Bind(x =>
             {
                 return x.Unit();
-            });            
+            });
+
+            tcs.SetCanceled();
 
             Assert.IsNotNull(result);
             Assert.AreEqual(TaskStatus.Canceled, result.Status);
+        }
+
+        [TestMethod]
+        public void Bind_ProducesFaultedTaskOfFaultedSource()
+        {
+            var tcs = new TaskCompletionSource<TestValue>();
+
+            var source = tcs.Task;
+
+            var result = source.Bind(x =>
+            {
+                return x.Unit();
+            });
+
+            var exception = new Exception();
+
+            tcs.SetException(exception);
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(TaskStatus.Faulted, result.Status);
+            Assert.AreSame(exception, result.Exception.GetBaseException());
+        }
+
+        [TestMethod]
+        public void Bind_ProducesCompletedTaskOfCompletedSourceIfBoundCompletes()
+        {
+            var tcs = new TaskCompletionSource<TestValue>();
+
+            var source = tcs.Task;
+
+            var called = false;
+            var result = source.Bind(x =>
+            {
+                called = true;
+                return x.Unit();
+            });
+
+            var testValue = new TestValue();
+
+            tcs.SetResult(testValue);
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(TaskStatus.RanToCompletion, result.Status);
+            Assert.AreSame(testValue, result.Result);
+            Assert.IsTrue(called);
+        }
+
+        [TestMethod]
+        public void Bind_ProducesCancelledTaskOfCompletedSourceIfBoundCancels()
+        {
+            var tcs = new TaskCompletionSource<TestValue>();
+
+            var source = tcs.Task;
+
+            var result = source.Bind(x => TaskMonad.TaskMonad.CreateCancelled<object>());
+
+            var testValue = new TestValue();
+
+            tcs.SetResult(testValue);
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(TaskStatus.Canceled, result.Status);
+        }
+
+        [TestMethod]
+        [Ignore]
+        // Need to add support for CancellationToken
+        public void Bind_ProducesCancelledTaskOfCompletedSourceIfBoundThrowsTaskCancelledException()
+        {
+            var tcs = new TaskCompletionSource<TestValue>();
+
+            var source = tcs.Task;
+
+            var result = source.Bind<TestValue, TestValue>(x => { throw new TaskCanceledException(); });
+
+            var testValue = new TestValue();
+
+            tcs.SetResult(testValue);
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(TaskStatus.Canceled, result.Status);
+        }
+
+        [TestMethod]
+        public void Bind_ProducesFaultedTaskOfCompletedSourceIfBoundFails()
+        {
+            var tcs = new TaskCompletionSource<TestValue>();
+
+            var source = tcs.Task;
+
+            var exception = new InvalidOperationException();
+            var result = source.Bind(x => TaskMonad.TaskMonad.FromException<TestValue>(exception));
+
+            var testValue = new TestValue();
+
+            tcs.SetResult(testValue);
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(TaskStatus.Faulted, result.Status);
+            Assert.AreSame(exception, result.Exception.GetBaseException());
+        }
+
+        [TestMethod]
+        public void Bind_ProducesFaultedTaskOfCompletedSourceIfBoundThrows()
+        {
+            var tcs = new TaskCompletionSource<TestValue>();
+
+            var source = tcs.Task;
+
+            var exception = new InvalidOperationException();
+            var result = source.Bind<TestValue, TestValue>(x => { throw exception; });
+
+            var testValue = new TestValue();
+
+            tcs.SetResult(testValue);
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(TaskStatus.Faulted, result.Status);
+            Assert.AreSame(exception, result.Exception.GetBaseException());
         }
 
         class TestValue { }
